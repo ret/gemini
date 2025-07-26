@@ -634,10 +634,10 @@
    Returns the response from the API as a decoded JSON object."
   (let* ((payload (make-hash-table :test 'equal)))
     (setf (gethash "contents" payload)
-          (cond ((contents? contents) (list contents))
+          (cond ((content? contents) (list contents))
                 ((part? contents) (list (content :parts contents)))
                 ((stringp contents) (list (content :parts (list (part contents)))))
-                ((list-of-contents? contents) contents)
+                ((list-of-content? contents) contents)
                 ((list-of-parts? contents) (content :parts contents))
                 ((list-of-strings? contents) (content :parts (list (mapcar #'part contents))))
                 (t (error "Unrecognized contents: ~s" contents))))

@@ -40,7 +40,5 @@
    "*TOP-P*"
    "*VOICE-CONFIG*"
    "*VOICE-NAME*"
-   "CONTENTS?"
-   "LIST-OF-CONTENTS?"
-
+   "INVOKE-GEMINI"
    ))
