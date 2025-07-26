@@ -625,11 +625,11 @@
     (setf (gethash "parts" content) parts)
     content))
 
-(deff candidate?
+(deff content?
   (is-object-test '((:content "content"))
                   '(:content :finish-reason :index)
                   '("content" "finishReason" "index"))
-  "Predicate to check if a thing is a valid candidate object from the API response.")
+  "Predicate to check if a thing is a valid content object from the API response.")
 
 (deff list-of-candidates? (list-of-test #'candidate?)
   "Predicate to check if a thing is a list of candidate objects.")
@@ -665,7 +665,11 @@
   "Predicate to check if a thing is a list of content objects.")
 
 (deff singleton-list-of-content? (singleton-list-of-test #'content?)
-  "Predicate to check if a thing is a singleton list of a content object.")
+    "Predicate to check if a thing is a singleton list of a content object.")
+
+(deff contents?
+    (is-object-test '((:content "content"))
+                    '(:content :finish-reason :index)
 
 (deff blob?
   (is-object-test '((:data "data")
@@ -788,7 +792,12 @@
   "Predicate to check if a thing is a singleton list of a part object.")
 
 (deff list-of-strings? (list-of-test #'stringp)
-  "Predicate to check if a thing is a list of strings.")
+    "Predicate to check if a thing is a list of strings.")
+
+(deff gemini-response? (is-object-test '((:candidates "candidates"))
+                                       '(:candidates :model-version :response-id :usage-metadata)
+                                       '("candidates" "modelVersion" "responseId" "usageMetadata"))
+    "Predicate to check if thing is a gemini response.")
 
 (defun default-process-part (part)
   "Processes a single part object. If it's a text object, it extracts
@@ -815,10 +824,21 @@
     (error "Invalid finish reason: ~s" candidate))
   (default-process-content (get-content candidate)))
 
-(defvar *gemini-output-processor* #'default-process-candidate
+(defun default-process-response (response)
+  "Processes an API response object.
+   If the response contains one candidate, process that candidate.
+   Otherwise return the list of candidates."
+  (if (gemini-response? response)
+      (let ((candidates (get-candidates response)))
+        (if (singleton-list-of-candidates? candidates)
+            (default-process-candidate (car candidates))
+            candidates))
+      (error "Unrecognized Gemini response ~s" response)))
+
+(defvar *gemini-output-processor* #'default-process-result
   "Function to process the output of the Gemini API.
    Can be set to a custom function to handle the response differently.
-   Defaults to DEFAULT-PROCESS-CANDIDATE.")
+   Defaults to DEFAULT-PROCESS-result.")
 
 (defun invoke-gemini (model-id contents &key
                       (cached-content (default-cached-content))
