@@ -25,22 +25,21 @@
                    (googleapis-pathname)))
 
 (defun apikey-pathname ()
-  (or (probe-file (default-apikey-pathname))
-      (let ((project (default-project)))
+  (or (let ((project (default-project)))
         (when project
-          (probe-file (project-apikey-pathname project))))))
+          (probe-file (project-apikey-pathname project))))
+      (probe-file (default-apikey-pathname))))
 
 (defun google-api-key ()
-  (or (uiop:getenv "GOOGLE_API_KEY")
-      (let ((pathname (apikey-pathname)))
-        (if pathname
-            (if pathname
-                (with-open-file (stream pathname :direction :input)
-                  (let ((line (read-line stream nil)))
-                    (when line
-                      (str:trim line))))
-          (error "No Google API key found. Set the environment variable GOOGLE_API_KEY or create a file at ~a."
-                 (namestring pathname)))))))
+  (or (let ((pathname (apikey-pathname)))
+        (and pathname
+            (with-open-file (stream pathname :direction :input)
+              (let ((line (read-line stream nil)))
+                (when line
+                  (str:trim line))))))
+      (uiop:getenv "GOOGLE_API_KEY")
+      (error "No Google API key found. Set the environment variable GOOGLE_API_KEY or create a file at ~a."
+             (namestring (apikey-pathname)))))
 
 (defparameter
   +gemini-api-base-url+
