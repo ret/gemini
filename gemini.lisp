@@ -670,6 +670,7 @@
 (deff contents?
     (is-object-test '((:content "content"))
                     '(:content :finish-reason :index)
+                    '("content" "finishReason" "index")))
 
 (deff blob?
   (is-object-test '((:data "data")

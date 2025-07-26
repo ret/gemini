@@ -1,4 +1,4 @@
-;;;; package.lisp
+;;; -*- Lisp -*-
 
 (defpackage "GEMINI"
   (:shadowing-import-from "FUNCTION" "COMPOSE")
