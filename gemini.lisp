@@ -626,51 +626,56 @@
     content))
 
 (deff content?
-  (is-object-test '((:content "content"))
-                  '(:content :finish-reason :index)
-                  '("content" "finishReason" "index"))
-  "Predicate to check if a thing is a valid content object from the API response.")
+    (is-object-test '((:content "content"))
+                    '(:content :finish-reason :index)
+                    '("content" "finishReason" "index"))
+    "Predicate to check if a thing is a valid content object from the API response.")
 
-(deff list-of-candidates? (list-of-test #'candidate?)
-  "Predicate to check if a thing is a list of candidate objects.")
+;; (deff list-of-candidates? (list-of-test #'candidate?)
+;;   "Predicate to check if a thing is a list of candidate objects.")
 
-(deff singleton-list-of-candidates? (singleton-list-of-test #'candidate?)
-  "Predicate to check if a thing is a singleton list of a candidate object.")
+;; (deff singleton-list-of-candidates? (singleton-list-of-test #'candidate?)
+;;   "Predicate to check if a thing is a singleton list of a candidate object.")
 
 (deff get-candidates (object-ref-function :candidates "candidates")
-  "Retrieves the 'candidates' field from an object.")
+    "Retrieves the 'candidates' field from an object.")
 
 (deff get-content (object-ref-function :content "content")
-  "Retrieves the 'content' field from an object.")
+    "Retrieves the 'content' field from an object.")
 
 (deff get-finish-reason (object-ref-function :finish-reason "finishReason")
-  "Retrieves the 'finishReason' field from an object.")
+    "Retrieves the 'finishReason' field from an object.")
 
 (deff get-parts (object-ref-function :parts "parts")
-  "Retrieves the 'parts' field from an object.")
+    "Retrieves the 'parts' field from an object.")
 
 (deff get-role (object-ref-function :role "role")
-  "Retrieves the 'role' field from an object.")
+    "Retrieves the 'role' field from an object.")
 
 (deff get-text (object-ref-function :text "text")
-  "Retrieves the 'text' field from an object.")
+    "Retrieves the 'text' field from an object.")
+
+(deff get-thought-flag (object-ref-function :thought "thought")
+    "Retrieves the 'thought' field from an object.")
 
 (deff content?
-  (is-object-test '((:parts "parts"))
-                  '(:parts :role)
-                  '("parts" "role"))
-  "Predicate to check if a thing is a valid content object.")
+    (is-object-test '((:parts "parts"))
+                    '(:parts :role)
+                    '("parts" "role"))
+    "Predicate to check if a thing is a valid content object.")
 
 (deff list-of-content? (list-of-test #'content?)
-  "Predicate to check if a thing is a list of content objects.")
+    "Predicate to check if a thing is a list of content objects.")
 
 (deff singleton-list-of-content? (singleton-list-of-test #'content?)
     "Predicate to check if a thing is a singleton list of a content object.")
 
-(deff contents?
+(deff candidate?
     (is-object-test '((:content "content"))
                     '(:content :finish-reason :index)
                     '("content" "finishReason" "index")))
+
+(deff singleton-list-of-candidates? (singleton-list-of-test #'candidate?))
 
 (deff blob?
   (is-object-test '((:data "data")
@@ -735,9 +740,13 @@
 
 (deff text-object?
   (is-object-test '((:text "text"))
-                  '(:text)
-                  '("text"))
-  "Predicate to check if a thing is a text part object.")
+                  '(:text :thought)
+                  '("text" "thought"))
+    "Predicate to check if a thing is a text part object.")
+
+(defun thought? (thing)
+  (and (text-object? thing)
+       (get-thought-flag thing)))
 
 (deff inline-data-object?
   (is-object-test '((:inline-data "inlineData"))
@@ -806,12 +815,23 @@
   (cond ((text-object? part) (get-text part))
         (t part)))
 
+(defun process-thought (thought)
+  (format *trace-output* "~&~{;; ~a~%~}"
+          (mapcar #'str:trim
+                  (str:split #\newline (get-text thought)))))
+
+(defun process-thoughts (thoughts)
+  (mapc #'process-thought thoughts))
+
 (defun default-process-content (content)
   "Processes a content object. If the role is 'model' and it contains
    a single part, it processes that part. Otherwise, it returns the
    content as is."
   (if (equal (get-role content) "model")
-      (let ((parts (get-parts content)))
+      (let* ((raw-parts (get-parts content))
+             (thoughts (remove-if-not #'thought? raw-parts))
+             (parts (remove-if #'thought? raw-parts)))
+        (process-thoughts thoughts)
         (if (singleton-list-of-parts? parts)
             (default-process-part (first parts))
             parts))
@@ -836,10 +856,10 @@
             candidates))
       (error "Unrecognized Gemini response ~s" response)))
 
-(defvar *gemini-output-processor* #'default-process-result
+(defvar *output-processor* #'default-process-response
   "Function to process the output of the Gemini API.
    Can be set to a custom function to handle the response differently.
-   Defaults to DEFAULT-PROCESS-result.")
+   Defaults to DEFAULT-PROCESS-RESPONSE.")
 
 (defun invoke-gemini (model-id contents &key
                       (cached-content (default-cached-content))
@@ -854,7 +874,7 @@
    The CONTENTS argument can be a content object, a part object, a string,
    a list of content objects, a list of part objects, or a list of strings.
    Returns the processed response from the API, as determined by
-   *GEMINI-OUTPUT-PROCESSOR*."
+   *OUTPUT-PROCESSOR*."
   (let* ((payload (make-hash-table :test 'equal)))
     (setf (gethash "contents" payload)
           (cond ((content? contents) (list contents))
@@ -876,4 +896,4 @@
       (setf (gethash "tools" payload) tools))
     (when tool-config
       (setf (gethash "toolConfig" payload) tool-config))
-    (funcall *gemini-output-processor* (%invoke-gemini model-id payload))))
+    (funcall *output-processor* (%invoke-gemini model-id payload))))
