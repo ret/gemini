@@ -498,11 +498,124 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (setf (documentation '*tools* 'variable) "A list of tools available to the model for function calling."))
 
+(defun schema-type-enum (type)
+  "Returns a schema type for the given TYPE.
+   Valid types are 'string', 'number', 'integer', 'boolean', 'object', 'array'."
+  (ecase type
+    (:unspecified 0)
+    (:string 1)
+    (:number 2)
+    (:integer 3)
+    (:boolean 4)
+    (:array 5)
+    (:object 6)))
+
+(defun schema (&key type format title description
+                 (nullable nil nullable-supplied-p)
+                 (enum nil enum-supplied-p)
+                 (max-items 0 max-items-supplied-p)
+                 (min-items 0 min-items-supplied-p)
+                 (properties nil properties-supplied-p)
+                 (required nil required-supplied-p)
+                 (min-properties 0 min-properties-supplied-p)
+                 (max-properties 0 max-properties-supplied-p)
+                 (min-length 0 min-length-supplied-p)
+                 (max-length 0 max-length-supplied-p)
+                 pattern
+                 example
+                 any-of
+                 property-ordering
+                 default
+                 items
+                 (minimum 0 minimum-supplied-p)
+                 (maximum 0 maximum-supplied-p))
+  "Creates a JSON schema object with the specified TYPE, FORMAT, TITLE,
+   DESCRIPTION, PROPERTIES, and REQUIRED fields."
+  (let ((schema (make-hash-table :test 'equal)))
+    (setf (gethash "type" schema) (schema-type-enum type))
+    (when format
+      (setf (gethash "format" schema) format))
+    (when title
+      (setf (gethash "title" schema) title))
+    (when description
+      (setf (gethash "description" schema) description))
+    (when nullable-supplied-p
+      (setf (gethash "nullable" schema) nullable))
+    (when properties
+      (setf (gethash "properties" schema) properties))
+    (when required
+      (setf (gethash "required" schema) required))
+    schema))
+
+(defun function-declaration (&key name description behavior
+                               (parameters nil parameters-supplied-p) parametersJsonSchema response responseJsonSchema)
+  "Creates a function declaration object with the specified NAME, DESCRIPTION,
+   BEHAVIOR, PARAMETERS, PARAMETERS-JSON-SCHEMA, RESPONSE, and RESPONSE-JSON-SCHEMA."
+  (let ((declaration (make-hash-table :test 'equal)))
+    (setf (gethash "name" declaration) name)
+    (setf (gethash "description" declaration) description)
+    (when behavior
+      (unless (eq behavior :blocking)
+        (error "Only :blocking behavior is supported, got ~s." behavior))
+      (setf (gethash "behavior" declaration) behavior))
+    (when parameters
+      (setf (gethash "parameters" declaration) parameters))
+    (when parametersJsonSchema
+      (setf (gethash "parametersJsonSchema" declaration) parametersJsonSchema))
+    (when response
+      (setf (gethash "response" declaration) response))
+    (when responseJsonSchema
+      (setf (gethash "responseJsonSchema" declaration) responseJsonSchema))
+    declaration))
+
+(defvar *function-declarations*)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (setf (documentation '*function-declarations* 'variable) "Holds the function declarations for the model's tools."))
+
+(defparameter *functions*
+  (list (cons "lispImplementationType" #'lisp-implementation-type)
+        (cons "lispImplementationVersion" #'lisp-implementation-version)
+        (cons "ping" (lambda () (values)))))
+
+(defun default-function-declarations ()
+  (if (boundp '*function-declarations*)
+      *function-declarations*
+      ;; Add default function declarations here
+      ;; Example:
+      (list
+       (function-declaration
+        :name "lispImplementationType"
+        :description (or (documentation 'lisp-implementation-type 'function)
+                        "Returns the type of the Lisp implementation.")
+        :behavior :blocking
+        :response (schema :type :string))
+
+       (function-declaration
+        :name "lispImplementationVersion"
+        :description (or (documentation 'lisp-implementation-version 'function)
+                        "Returns the version of the Lisp implementation.")
+        :behavior :blocking
+        :response (schema :type :string))
+
+       (function-declaration
+        :name "noHandler"
+        :description "This function is missing its handler.")
+
+       (function-declaration
+        :name "ping"
+        :description "Detects whether the model client responds to function calls."))))
+
 (defun default-tools ()
   "Returns the value of *TOOLS* if it is bound, otherwise NIL.
    Provides a default tools object for generation."
-  (when (boundp '*tools*)
-    *tools*))
+  (if (boundp '*tools*)
+      *tools*
+    (let ((tools (make-hash-table :test 'equal)))
+      (let ((function-declarations (default-function-declarations)))
+        (when function-declarations
+          (setf (gethash "functionDeclarations" tools) function-declarations)))
+      (unless (zerop (hash-table-count tools))
+        tools))))
 
 (defvar *tool-config*)
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -619,6 +732,10 @@
 (defun content (&key role (parts (error "Content must contain PARTS.")))
   "Creates a content object with the specified ROLE and PARTS.
    Returns a hash table representing the content structure for API requests."
+  (assert (or (null role) (stringp role))
+          () "Role must be a string or NIL.")
+  (assert (list-of-parts? parts)
+          () "Parts must be a list or NIL.")
   (let ((content (make-hash-table :test 'equal)))
     (when role
       (setf (gethash "role" content) role))
@@ -637,6 +754,9 @@
 ;; (deff singleton-list-of-candidates? (singleton-list-of-test #'candidate?)
 ;;   "Predicate to check if a thing is a singleton list of a candidate object.")
 
+(deff get-args (object-ref-function :args "args")
+    "Retrieves the 'args' field from an object, typically used in function calls.")
+
 (deff get-candidates (object-ref-function :candidates "candidates")
     "Retrieves the 'candidates' field from an object.")
 
@@ -645,6 +765,12 @@
 
 (deff get-finish-reason (object-ref-function :finish-reason "finishReason")
     "Retrieves the 'finishReason' field from an object.")
+
+(deff get-function-call (object-ref-function :function-call "functionCall")
+    "Retrieves the 'functionCall' field from an object.")
+
+(deff get-name (object-ref-function :name "name")
+    "Retrieves the 'name' field from an object.")
 
 (deff get-parts (object-ref-function :parts "parts")
     "Retrieves the 'parts' field from an object.")
@@ -684,11 +810,27 @@
                   '("data" "mimeType"))
   "Predicate to check if a thing is a valid blob object (inline data).")
 
+(defun function-call (&key name args)
+  "Creates a function call object with the specified NAME and ARGS.
+   Returns a hash table representing the function call structure."
+  (let ((call (make-hash-table :test 'equal)))
+    (setf (gethash "name" call) name)
+    (setf (gethash "args" call) args)
+    call))
+
 (deff function-call?
   (is-object-test '((:name "name"))
                   '(:args :id :name)
                   '("args" "id" "name"))
   "Predicate to check if a thing is a valid function call object.")
+
+(defun function-response (&key name response)
+  "Creates a function response object with the specified NAME and RESPONSE.
+   Returns a hash table representing the function response structure."
+  (let ((resp (make-hash-table :test 'equal)))
+    (setf (gethash "name" resp) name)
+    (setf (gethash "response" resp) response)
+    resp))
 
 (deff function-response?
   (is-object-test '((:name "name")
@@ -809,11 +951,20 @@
                                        '("candidates" "modelVersion" "responseId" "usageMetadata"))
     "Predicate to check if thing is a gemini response.")
 
+(defvar *model*)
+
+(defun function-call-part? (part)
+  "Checks if the PART is a function call part object."
+  (or (and (consp part)
+           (assoc :function-call part))
+      (and (hash-table-p part)
+           (gethash "functionCall" part))))
+
 (defun default-process-part (part)
   "Processes a single part object. If it's a text object, it extracts
    and returns the text. Otherwise, it returns the part as is."
   (cond ((text-object? part) (get-text part))
-        (t part)))
+        (t nil)))
 
 (defun process-thought (thought)
   (format *trace-output* "~&~{;; ~a~%~}"
@@ -823,18 +974,62 @@
 (defun process-thoughts (thoughts)
   (mapc #'process-thought thoughts))
 
+(defun default-process-function-call (function-call-part)
+  (let* ((name (get-name function-call-part))
+         (args (get-args function-call-part))
+         (handler (cdr (assoc name *functions* :test #'equal))))
+    (cond ((null handler)
+           `((:function-response . ,(function-response
+                                    :name name
+                                    :response `((:error . ,(format nil "No handler for ~s." name)))))))
+          ((not (functionp handler))
+           `((:function-response . ,(function-response
+                                    :name name
+                                    :response `((:error . ,(format nil "Handler for ~s is not a function." name)))))))
+          (t (let ((answer (funcall handler)))
+               `((:function-response . ,(function-response :name name
+                                                          :response `((:result . ,answer))))))))))
+
+(defun dehashify (object)
+  (cond ((hash-table-p object)
+         (mapcar #'dehashify (hash-table-alist object)))
+        ((consp object)
+         (cons (dehashify (car object))
+               (dehashify (cdr object))))
+        (t object)))
+
+(defun default-process-function-calls (parts)
+  "Processes a list of function call part objects.
+   Returns a list of processed function call responses."
+  (invoke-gemini *model*
+                 (content :parts
+                          (mapcar (lambda (part)
+                                    (default-process-function-call (get-function-call part)))
+                                  parts)
+                          :role "function")))
+
+(deff list-of-function-calls?
+    (list-of-test #'function-call-part?)
+    "Predicate to check if a thing is a list of function call part objects.")
+
+(defvar *history* '()
+  "Holds the conversation history as a list of content objects.
+   This is used to maintain context across multiple API calls.")
+
 (defun default-process-content (content)
   "Processes a content object. If the role is 'model' and it contains
    a single part, it processes that part. Otherwise, it returns the
    content as is."
   (if (equal (get-role content) "model")
-      (let* ((raw-parts (get-parts content))
+      (let* ((*history* (append *history* (list content)))
+             (raw-parts (get-parts content))
              (thoughts (remove-if-not #'thought? raw-parts))
              (parts (remove-if #'thought? raw-parts)))
+        ;;(format t "~&History: ~s~%" *history*)
         (process-thoughts thoughts)
-        (if (singleton-list-of-parts? parts)
-            (default-process-part (first parts))
-            parts))
+        (cond ((singleton-list-of-parts? parts) (default-process-part (first parts)))
+              ((list-of-function-calls? parts) (default-process-function-calls parts))
+              (t parts)))
       content))
 
 (defun default-process-candidate (candidate)
@@ -861,29 +1056,31 @@
    Can be set to a custom function to handle the response differently.
    Defaults to DEFAULT-PROCESS-RESPONSE.")
 
-(defun invoke-gemini (model-id contents &key
+(defun invoke-gemini (*model* contents &key
                       (cached-content (default-cached-content))
                       (generation-config (default-generation-config))
                       (tools (default-tools))
                       (tool-config (default-tool-config))
                       (safety-settings (default-safety-settings))
                       (system-instruction (default-system-instruction)))
-  "Invokes the Gemini API with the specified MODEL-ID and CONTENTS.
+  "Invokes the Gemini API with the specified MODEL and CONTENTS.
    Optional arguments allow for custom CACHED-CONTENT, GENERATION-CONFIG,
    TOOLS, TOOL-CONFIG, SAFETY-SETTINGS, and SYSTEM-INSTRUCTION.
    The CONTENTS argument can be a content object, a part object, a string,
    a list of content objects, a list of part objects, or a list of strings.
    Returns the processed response from the API, as determined by
    *OUTPUT-PROCESSOR*."
-  (let* ((payload (make-hash-table :test 'equal)))
-    (setf (gethash "contents" payload)
-          (cond ((content? contents) (list contents))
-                ((part? contents) (list (content :parts contents)))
-                ((stringp contents) (list (content :parts (list (part contents)))))
-                ((list-of-content? contents) contents)
-                ((list-of-parts? contents) (list (content :parts contents))) ; Corrected to wrap parts list in a single content object
-                ((list-of-strings? contents) (list (content :parts (mapcar #'part contents)))) ; Corrected to mapcar part over strings and wrap in content
-                (t (error "Unrecognized contents: ~s" contents))))
+  ;;(format t "~&Contents: ~s~%" (dehashify contents))
+  (let* ((payload (make-hash-table :test 'equal))
+         (*history* (append *history*
+                            (cond ((content? contents) (list contents))
+                                  ((part? contents) (list (content :parts contents :role "user")))
+                                  ((stringp contents) (list (content :parts (list (part contents)) :role "user")))
+                                  ((list-of-content? contents) contents)
+                                  ((list-of-parts? contents) (list (content :parts contents :role "user"))) ; Corrected to wrap parts list in a single content object
+                                  ((list-of-strings? contents) (list (content :parts (mapcar #'part contents) :role "user"))) ; Corrected to mapcar part over strings and wrap in content
+                                  (t (error "Unrecognized contents: ~s" contents))))))
+    (setf (gethash "contents" payload) *history*)
     (when cached-content
       (setf (gethash "cachedContent" payload) cached-content))
     (when generation-config
@@ -896,4 +1093,4 @@
       (setf (gethash "tools" payload) tools))
     (when tool-config
       (setf (gethash "toolConfig" payload) tool-config))
-    (funcall *output-processor* (%invoke-gemini model-id payload))))
+    (funcall *output-processor* (%invoke-gemini *model* payload))))
