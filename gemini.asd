@@ -4,6 +4,6 @@
   :description "API to Google's Gemini LLM"
   :author "Joe Marshall"
   :license "MIT"
-  :depends-on ("alexandria" "cl-json" "dexador" "fold" "function" "named-let" "uiop")
+  :depends-on ("alexandria" "cl-json" "dexador" "fold" "function" "named-let" "uiop" "series" "str")
   :components ((:file "gemini" :depends-on ("package"))
                (:file "package")))
